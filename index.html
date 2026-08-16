@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flappy Axolotl</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0b132b;
+            color: #ffffff;
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 360px;
+            height: 540px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid #3a506b;
+        }
+        canvas {
+            display: block;
+        }
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(11, 19, 43, 0.85);
+            backdrop-filter: blur(5px);
+            padding: 20px;
+            text-align: center;
+        }
+        h1 {
+            margin: 0 0 5px 0;
+            font-size: 2.2rem;
+            color: #6fffe9;
+            text-shadow: 0 0 10px rgba(111,255,233,0.5);
+        }
+        .highscore-text {
+            margin: 5px 0 20px 0;
+            font-size: 1.1rem;
+            color: #5bc0be;
+            font-weight: bold;
+        }
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 80%;
+            align-items: center;
+        }
+        button {
+            background: #6fffe9;
+            color: #0b132b;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(111,255,233,0.3);
+            width: 100%;
+            transition: transform 0.1s ease;
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+        .theme-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        .theme-btn {
+            padding: 10px;
+            font-size: 0.9rem;
+            background: #1c2541;
+            color: #ffffff;
+            border: 2px solid #3a506b;
+            border-radius: 12px;
+            box-shadow: none;
+        }
+        .theme-btn.active {
+            border-color: #6fffe9;
+            background: #3a506b;
+        }
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="360" height="540"></canvas>
+        
+        <!-- Main Menu Screen -->
+        <div id="main-menu" class="ui-overlay">
+            <h1>Flappy Axolotl</h1>
+            <div id="menu-highscore" class="highscore-text">High Score: 0</div>
+            <div class="button-group">
+                <button onclick="startGame()">Play Game</button>
+                <button onclick="showThemes()">Select Theme</button>
+            </div>
+        </div>
+
+        <!-- Theme Menu Screen -->
+        <div id="theme-menu" class="ui-overlay hidden">
+            <h1>Themes</h1>
+            <p style="color: #5bc0be; margin-bottom: 15px;">Choose your color palette:</p>
+            <div class="theme-grid">
+                <button class="theme-btn active" onclick="setTheme('ocean')">🌊 Ocean</button>
+                <button class="theme-btn" onclick="setTheme('neon')">💖 Neon</button>
+                <button class="theme-btn" onclick="setTheme('forest')">🌲 Forest</button>
+                <button class="theme-btn" onclick="setTheme('sunset')">🌅 Sunset</button>
+            </div>
+            <button style="margin-top: 20px;" onclick="showMainMenu()">Back</button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameover-menu" class="ui-overlay hidden">
+            <h1 id="gameover-title">Game Over!</h1>
+            <div id="gameover-score" class="highscore-text">Score: 0</div>
+            <div class="button-group">
+                <button onclick="startGame()">Play Again</button>
+                <button onclick="showMainMenu()">Main Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Screens
+        const mainMenu = document.getElementById('main-menu');
+        const themeMenu = document.getElementById('theme-menu');
+        const gameoverMenu = document.getElementById('gameover-menu');
+        const menuHighscore = document.getElementById('menu-highscore');
+        const gameoverScore = document.getElementById('gameover-score');
+
+        // Load Axolotl Image
+        const axolotlImg = new Image();
+        axolotlImg.src = 'axolotl.jpg';
+
+        // Color Themes Configuration
+        const themes = {
+            ocean: { bgTop: '#1c2541', bgBottom: '#0b132b', pipe: '#3a506b', rim: '#5bc0be', text: '#6fffe9' },
+            neon:  { bgTop: '#2b0938', bgBottom: '#12031a', pipe: '#ff007f', rim: '#7928ca', text: '#ff007f' },
+            forest:{ bgTop: '#1b4332', bgBottom: '#081c15', pipe: '#2d6a4f', rim: '#52b788', text: '#74c69d' },
+            sunset:{ bgTop: '#7f2982', bgBottom: '#2d0b3f', pipe: '#f72585', rim: '#ffb703', text: '#ffb703' }
+        };
+        let currentTheme = themes.ocean;
+
+        // Game Physics & Variables
+        let player = { x: 50, y: 250, width: 44, height: 44, velocity: 0, gravity: 0.35, jump: -6.5 };
+        let pipes = [];
+        let score = 0;
+        let highScore = 0;
+        let frameCount = 0;
+        let isGameRunning = false;
+        const pipeGap = 150;
+        const pipeWidth = 55;
+        const pipeSpeed = 2;
+
+        function showMainMenu() {
+            hideAllScreens();
+            menuHighscore.textContent = `High Score: ${highScore}`;
+            mainMenu.classList.remove('hidden');
+        }
+
+        function showThemes() {
+            hideAllScreens();
+            themeMenu.classList.remove('hidden');
+        }
+
+        function hideAllScreens() {
+            mainMenu.classList.add('hidden');
+            themeMenu.classList.add('hidden');
+            gameoverMenu.classList.add('hidden');
+        }
+
+        function setTheme(themeKey) {
+            currentTheme = themes[themeKey];
+            document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            draw();
+        }
+
+        function startGame() {
+            hideAllScreens();
+            player.y = 250;
+            player.velocity = 0;
+            pipes = [];
+            score = 0;
+            frameCount = 0;
+            isGameRunning = true;
+            requestAnimationFrame(gameLoop);
+        }
+
+        function swim() {
+            if (!isGameRunning) return;
+            player.velocity = player.jump;
+        }
+
+        // Controls
+        window.addEventListener('keydown', (e) => { if (e.code === 'Space') swim(); });
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); swim(); });
+        canvas.addEventListener('mousedown', swim);
+
+        function update() {
+            player.velocity += player.gravity;
+            player.y += player.velocity;
+
+            if (frameCount % 100 === 0) {
+                let topPipeHeight = Math.floor(Math.random() * (canvas.height - pipeGap - 100)) + 30;
+                pipes.push({
+                    x: canvas.width,
+                    top: topPipeHeight,
+                    bottom: canvas.height - topPipeHeight - pipeGap,
+                    passed: false
+                });
+            }
+
+            for (let i = 0; i < pipes.length; i++) {
+                let p = pipes[i];
+                p.x -= pipeSpeed;
+
+                if (!p.passed && p.x + pipeWidth < player.x) {
+                    score++;
+                    p.passed = true;
+                }
+
+                if (
+                    player.x + player.width > p.x &&
+                    player.x < p.x + pipeWidth &&
+                    (player.y < p.top || player.y + player.height > canvas.height - p.bottom)
+                ) {
+                    gameOver();
+                }
+            }
+
+            if (pipes.length > 0 && pipes[0].x < -pipeWidth) {
+                pipes.shift();
+            }
+
+            if (player.y + player.height >= canvas.height || player.y <= 0) {
+                gameOver();
+            }
+
+            frameCount++;
+        }
+
+        function draw() {
+            // Background Gradient according to theme
+            let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, currentTheme.bgTop);
+            gradient.addColorStop(1, currentTheme.bgBottom);
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Pipes
+            pipes.forEach(p => {
+                ctx.fillStyle = currentTheme.pipe;
+                ctx.fillRect(p.x, 0, pipeWidth, p.top);
+                ctx.fillRect(p.x, canvas.height - p.bottom, pipeWidth, p.bottom);
+                
+                ctx.fillStyle = currentTheme.rim;
+                ctx.fillRect(p.x - 2, p.top - 12, pipeWidth + 4, 12);
+                ctx.fillRect(p.x - 2, canvas.height - p.bottom, pipeWidth + 4, 12);
+            });
+
+            // Draw Player
+            ctx.save();
+            ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+            let angle = Math.min(Math.PI / 4, Math.max(-Math.PI / 4, player.velocity * 0.08));
+            ctx.rotate(angle);
+
+            ctx.beginPath();
+            ctx.arc(0, 0, player.width / 2, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.drawImage(axolotlImg, -player.width / 2, -player.height / 2, player.width, player.height);
+            ctx.restore();
+
+            // Draw Score
+            if (isGameRunning) {
+                ctx.fillStyle = currentTheme.text;
+                ctx.font = 'bold 28px sans-serif';
+                ctx.fillText(score, canvas.width / 2 - 10, 50);
+            }
+        }
+
+        function gameOver() {
+            isGameRunning = false;
+            if (score > highScore) highScore = score;
+
+            gameoverScore.innerHTML = `Score: ${score}<br>High Score: ${highScore}`;
+            gameoverMenu.classList.remove('hidden');
+        }
+
+        function gameLoop() {
+            if (!isGameRunning) return;
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        draw();
+    </script>
+</body>
+</html>
