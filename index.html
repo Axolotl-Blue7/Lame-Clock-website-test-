@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flappy Axolotl</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0b132b;
+            color: #ffffff;
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 360px;
+            height: 540px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid #3a506b;
+        }
+        canvas {
+            display: block;
+            background: linear-gradient(to bottom, #1c2541, #0b132b);
+        }
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(11, 19, 43, 0.75);
+            backdrop-filter: blur(4px);
+        }
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 2rem;
+            color: #6fffe9;
+            text-shadow: 0 0 10px rgba(111,255,233,0.5);
+        }
+        p {
+            margin: 5px 0 20px 0;
+            font-size: 1rem;
+            color: #5bc0be;
+        }
+        button {
+            background: #6fffe9;
+            color: #0b132b;
+            border: none;
+            padding: 12px 28px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(111,255,233,0.3);
+            transition: transform 0.1s ease;
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="360" height="540"></canvas>
+        
+        <!-- Start / Game Over Screen -->
+        <div id="overlay" class="ui-overlay">
+            <h1 id="title">Flappy Axolotl</h1>
+            <p id="subtitle">Tap, click, or press Space to Swim!</p>
+            <button id="start-btn" onclick="startGame()">Play</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const overlay = document.getElementById('overlay');
+        const title = document.getElementById('title');
+        const subtitle = document.getElementById('subtitle');
+        const startBtn = document.getElementById('start-btn');
+
+        // Load Axolotl Image
+        const axolotlImg = new Image();
+        axolotlImg.src = 'axolotl.jpg'; // Matches the uploaded image name
+
+        // Game Physics & Variables
+        let player = {
+            x: 50,
+            y: 250,
+            width: 44,
+            height: 44,
+            velocity: 0,
+            gravity: 0.35,
+            jump: -6.5
+        };
+
+        let pipes = [];
+        let score = 0;
+        let highScore = 0;
+        let frameCount = 0;
+        let isGameRunning = false;
+        const pipeGap = 150;
+        const pipeWidth = 55;
+        const pipeSpeed = 2;
+
+        function startGame() {
+            player.y = 250;
+            player.velocity = 0;
+            pipes = [];
+            score = 0;
+            frameCount = 0;
+            isGameRunning = true;
+            overlay.classList.add('hidden');
+            requestAnimationFrame(gameLoop);
+        }
+
+        function swim() {
+            if (!isGameRunning) return;
+            player.velocity = player.jump;
+        }
+
+        // Controls: Screen Tap, Mouse Click, or Spacebar
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') swim();
+        });
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            swim();
+        });
+        canvas.addEventListener('mousedown', swim);
+
+        function update() {
+            // Player movement
+            player.velocity += player.gravity;
+            player.y += player.velocity;
+
+            // Generate Coral/Pipes
+            if (frameCount % 100 === 0) {
+                let topPipeHeight = Math.floor(Math.random() * (canvas.height - pipeGap - 100)) + 30;
+                pipes.push({
+                    x: canvas.width,
+                    top: topPipeHeight,
+                    bottom: canvas.height - topPipeHeight - pipeGap,
+                    passed: false
+                });
+            }
+
+            // Move Coral/Pipes
+            for (let i = 0; i < pipes.length; i++) {
+                let p = pipes[i];
+                p.x -= pipeSpeed;
+
+                // Score Counting
+                if (!p.passed && p.x + pipeWidth < player.x) {
+                    score++;
+                    p.passed = true;
+                }
+
+                // Collision Detection
+                if (
+                    player.x + player.width > p.x &&
+                    player.x < p.x + pipeWidth &&
+                    (player.y < p.top || player.y + player.height > canvas.height - p.bottom)
+                ) {
+                    gameOver();
+                }
+            }
+
+            // Remove offscreen pipes
+            if (pipes.length > 0 && pipes[0].x < -pipeWidth) {
+                pipes.shift();
+            }
+
+            // Boundary collision (Floor & Ceiling)
+            if (player.y + player.height >= canvas.height || player.y <= 0) {
+                gameOver();
+            }
+
+            frameCount++;
+        }
+
+        function draw() {
+            // Background
+            ctx.fillStyle = '#0b132b';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Pipes (Underwater Coral Style)
+            pipes.forEach(p => {
+                ctx.fillStyle = '#3a506b';
+                // Top pipe
+                ctx.fillRect(p.x, 0, pipeWidth, p.top);
+                // Bottom pipe
+                ctx.fillRect(p.x, canvas.height - p.bottom, pipeWidth, p.bottom);
+                
+                // Pipe Rims
+                ctx.fillStyle = '#5bc0be';
+                ctx.fillRect(p.x - 2, p.top - 12, pipeWidth + 4, 12);
+                ctx.fillRect(p.x - 2, canvas.height - p.bottom, pipeWidth + 4, 12);
+            });
+
+            // Draw Axolotl Player
+            ctx.save();
+            ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+            // Tilt character based on velocity
+            let angle = Math.min(Math.PI / 4, Math.max(-Math.PI / 4, player.velocity * 0.08));
+            ctx.rotate(angle);
+
+            // Draw circular cropped image of the Axolotl
+            ctx.beginPath();
+            ctx.arc(0, 0, player.width / 2, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.drawImage(axolotlImg, -player.width / 2, -player.height / 2, player.width, player.height);
+            ctx.restore();
+
+            // Draw Score
+            ctx.fillStyle = '#6fffe9';
+            ctx.font = 'bold 28px sans-serif';
+            ctx.fillText(score, canvas.width / 2 - 10, 50);
+        }
+
+        function gameOver() {
+            isGameRunning = false;
+            if (score > highScore) highScore = score;
+
+            title.textContent = "Game Over!";
+            subtitle.innerHTML = `Score: ${score}<br>High Score: ${highScore}`;
+            startBtn.textContent = "Play Again";
+            overlay.classList.remove('hidden');
+        }
+
+        function gameLoop() {
+            if (!isGameRunning) return;
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Initial Draw
+        draw();
+    </script>
+</body>
+</html>
